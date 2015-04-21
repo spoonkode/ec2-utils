@@ -43,7 +43,7 @@ class AutoPurge:
         """
         global_defaults = {
             'log-level': 'DEBUG',
-            'log-file': './autopurge.log',
+            'log-file': '/var/log/auto-purge.log',
             'tag-name': 'auto-purge',
             'aws-region': 'eu-west',
             'action': 'stop',
