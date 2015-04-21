@@ -18,7 +18,8 @@ class AutoPurge:
         self.setup_logging()
 
     @staticmethod
-    def ec2connect(self, aws_region, aws_access_key, aws_secret_key):
+    def ec2connect(aws_region, aws_access_key, aws_secret_key):
+        logging.debug("Connecting to AWS: aws_region=%s, aws_access_key=%s", aws_region, aws_access_key)
         conn = ec2.connect_to_region(aws_region,
                                      aws_access_key_id=aws_access_key,
                                      aws_secret_access_key=aws_secret_key)
@@ -45,7 +46,7 @@ class AutoPurge:
             'log-level': 'DEBUG',
             'log-file': '/var/log/auto-purge.log',
             'tag-name': 'auto-purge',
-            'aws-region': 'eu-west',
+            'aws-region': 'eu-west-1',
             'action': 'stop',
         }
 
@@ -54,6 +55,10 @@ class AutoPurge:
         return cfg
 
     def setup_logging(self):
+        """
+        Set up logging.
+        :return: void
+        """
         levels = {
             'DEBUG': logging.DEBUG,
             'INFO': logging.INFO,
@@ -72,7 +77,15 @@ class AutoPurge:
         logging.info("Config File: %s", str(self.args.config_file))
 
     def job_callback(self, aws_region, tag_name, tag_value, action, job_id):
-
+        """
+        This method is called each time apscheduler is triggered.
+        :param aws_region: the region we are connecting to
+        :param tag_name: instances that have this tag name and;
+        :param tag_value: instances that have this tag value
+        :param action: the action to perform on the instance. Either stop (default) or terminate
+        :param job_id: the job_id (can be anything really)
+        :return: void
+        """
         logging.info("Job %s - Firing callback: aws_region=%s, tag_name=%s, tag_value=%s, action=%s",
                      job_id, aws_region, tag_name, tag_value, action)
 
@@ -81,7 +94,20 @@ class AutoPurge:
                               self.config.get('global', 'aws-secret-key'))
 
         reservations = ecc.get_all_reservations(filters={"tag:%s" % tag_name: tag_value})
-        instances = [i for r in reservations for i in r.instances]
+
+        if len(reservations) < 1:
+            logging.info("Job %s - No reservations found with tag '%s' having value '%s' ...nothing to do.",
+                         job_id,
+                         tag_name,
+                         tag_value)
+            return
+
+        instances = [i.id for r in reservations for i in r.instances if i.state in ('running', 'pending')]
+
+        if len(instances) < 1:
+            logging.info("Job %s - No running/pending instances found ...nothing to do.", job_id)
+            return
+
         logging.debug("Job %s - Found instances: %s", job_id, instances)
 
         if action == 'stop':
@@ -121,8 +147,7 @@ if __name__ == "__main__":
 
     ap = AutoPurge()
 
-
-
+    # Move this to the constructor?
     ap.setup_schedules()
     ap.scheduler.start()
 
